@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VEO Remover</title>
+<script src="https://unpkg.com/mp4-muxer@latest/build/mp4-muxer.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07070a;--s1:#0f0f14;--s2:#16161e;--s3:#1d1d28;
+  --border:#ffffff0f;--border2:#ffffff18;--border3:#ffffff28;
+  --text:#f0f0f8;--muted:#6b6b85;--hint:#3d3d52;
+  --accent:#7c6dfa;--accent2:#a78bfa;--accentbg:#7c6dfa18;
+  --green:#22d3a0;--greenbg:#22d3a012;--greenborder:#22d3a030;
+  --red:#f87171;--redbg:#f8717112;--redborder:#f8717130;
+  --blue:#60a5fa;--bluebg:#60a5fa12;
+  --r:14px;--r2:10px;--r3:8px;
+}
+html,body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh}
+body{padding:40px 32px 60px;max-width:900px;margin:0 auto}
+
+.header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:40px}
+.logo-title{font-size:26px;font-weight:800;letter-spacing:-1px;color:var(--text);margin-bottom:4px}
+.logo-title span{color:var(--accent2)}
+.logo-sub{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.badge{background:var(--accentbg);border:1px solid var(--accent);color:var(--accent2);font-family:'DM Mono',monospace;font-size:10px;font-weight:500;padding:5px 12px;border-radius:100px;letter-spacing:1px;align-self:center}
+
+.drop-zone{
+  border:1.5px dashed var(--border2);border-radius:var(--r);padding:52px 32px;
+  text-align:center;cursor:pointer;transition:all .25s;background:var(--s1);
+  margin-bottom:28px;
+}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--s2)}
+.drop-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--s3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center}
+.drop-icon svg{width:22px;height:22px;stroke:var(--accent2);stroke-width:1.5;fill:none}
+.drop-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
+.drop-sub{font-size:12px;color:var(--muted);font-family:'DM Mono',monospace}
+.drop-zone input{display:none}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px}
+.stat-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px}
+.stat-num{font-size:28px;font-weight:800;line-height:1;margin-bottom:4px;letter-spacing:-1px}
+.stat-num.total{color:var(--text)}
+.stat-num.done{color:var(--green)}
+.stat-num.remain{color:var(--accent2)}
+.stat-lbl{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px}
+
+.controls{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;margin-bottom:28px}
+.zoom-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px 18px;display:flex;align-items:center;gap:14px}
+.zoom-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+.zoom-val{font-family:'DM Mono',monospace;font-size:14px;font-weight:500;color:var(--accent2);min-width:38px;text-align:right;white-space:nowrap}
+input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;background:var(--s3);border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--accent2);border:3px solid var(--bg);cursor:pointer;transition:transform .15s}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
+
+.btn{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;border:none;border-radius:var(--r2);padding:0 22px;height:50px;cursor:pointer;transition:all .2s;letter-spacing:.3px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.btn svg{width:15px;height:15px;stroke-width:2;fill:none;flex-shrink:0}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary svg{stroke:#fff}
+.btn-primary:hover{background:var(--accent2)}
+.btn-primary:disabled{opacity:.3;cursor:not-allowed}
+.btn-ghost{background:var(--s1);color:var(--muted);border:1px solid var(--border)}
+.btn-ghost svg{stroke:var(--muted)}
+.btn-ghost:hover{border-color:var(--border3);color:var(--text)}
+.btn-ghost:disabled{opacity:.3;cursor:not-allowed}
+
+.gp-wrap{background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px;margin-bottom:24px;display:none}
+.gp-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.gp-label{font-size:12px;font-weight:600;color:var(--text);max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gp-pct{font-family:'DM Mono',monospace;font-size:13px;font-weight:500;color:var(--accent2)}
+.gp-track{height:5px;background:var(--s3);border-radius:3px;overflow:hidden}
+.gp-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;width:0;transition:width .12s}
+
+.file-list{display:flex;flex-direction:column;gap:6px}
+.empty-state{text-align:center;padding:64px 24px;color:var(--hint);font-size:13px;font-family:'DM Mono',monospace}
+.empty-state svg{width:40px;height:40px;stroke:var(--hint);stroke-width:1;fill:none;margin:0 auto 16px;display:block}
+
+.file-item{background:var(--s1);border:1px solid var(--border);border-radius:var(--r3);padding:12px 16px;display:flex;align-items:center;gap:12px;transition:border-color .2s}
+.file-item.done{border-color:var(--greenborder);background:var(--greenbg)}
+.file-item.error{border-color:var(--redborder);background:var(--redbg)}
+.file-item.processing{border-color:var(--accent)}
+.file-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .2s}
+.file-dot.pending{background:var(--hint)}
+.file-dot.processing{background:var(--blue)}
+.file-dot.done{background:var(--green)}
+.file-dot.error{background:var(--red)}
+.file-name{flex:1;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-size{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0}
+.mini-bar-wrap{width:72px;flex-shrink:0}
+.mini-bar{height:3px;background:var(--s3);border-radius:2px;overflow:hidden}
+.mini-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;transition:width .1s}
+.file-status{font-family:'DM Mono',monospace;font-size:10px;font-weight:500;min-width:52px;text-align:right;flex-shrink:0}
+.file-status.pending{color:var(--hint)}
+.file-status.done{color:var(--green)}
+.file-status.error{color:var(--red)}
+.file-status.processing{color:var(--blue)}
+.rm-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--hint);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.rm-btn svg{width:12px;height:12px;stroke:currentColor;stroke-width:2;fill:none}
+.rm-btn:hover{border-color:var(--redborder);color:var(--red);background:var(--redbg)}
+
+.tip{background:var(--s1);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--r3) var(--r3) 0;padding:12px 16px;margin-bottom:28px;font-size:12px;color:var(--muted);line-height:1.7;font-family:'DM Mono',monospace}
+.tip b{color:var(--accent2);font-weight:500}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div>
+    <div class="logo-title">VEO <span>Remover</span></div>
+    <div class="logo-sub">Watermark crop &middot; Batch export &middot; Max 100 video</div>
+  </div>
+  <div class="badge">BROWSER TOOL</div>
+</header>
+
+<div class="tip">
+  <b>Come funziona &mdash;</b> applica uno zoom centrato che taglia i bordi dove si trova il watermark VEO, poi riesporta il video alla risoluzione originale. Regola lo zoom se necessario.
+</div>
+
+<label class="drop-zone" id="drop-zone">
+  <div class="drop-icon">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  </div>
+  <div class="drop-title">Trascina i video qui oppure clicca per selezionarli</div>
+  <div class="drop-sub">MP4 &middot; MOV &middot; WebM &middot; AVI &nbsp;&nbsp;/&nbsp;&nbsp; fino a 100 file</div>
+  <input type="file" id="file-input" accept="video/*" multiple>
+</label>
+
+<div class="stats" id="stats-bar" style="display:none">
+  <div class="stat-card"><div class="stat-num total" id="stat-total">0</div><div class="stat-lbl">Video totali</div></div>
+  <div class="stat-card"><div class="stat-num done" id="stat-done">0</div><div class="stat-lbl">Completati</div></div>
+  <div class="stat-card"><div class="stat-num remain" id="stat-remain">0</div><div class="stat-lbl">In attesa</div></div>
+</div>
+
+<div class="controls" id="controls" style="display:none">
+  <div class="zoom-card">
+    <span class="zoom-label">Zoom</span>
+    <input type="range" id="zoom-slider" min="105" max="130" value="110" step="1">
+    <span class="zoom-val" id="zoom-val">110%</span>
+  </div>
+  <button class="btn btn-primary" id="start-btn">
+    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    Avvia
+  </button>
+  <button class="btn btn-ghost" id="clear-btn">
+    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+    Svuota
+  </button>
+</div>
+
+<div class="gp-wrap" id="gp-wrap">
+  <div class="gp-top">
+    <span class="gp-label" id="gp-label">Preparazione...</span>
+    <span class="gp-pct" id="gp-pct">0%</span>
+  </div>
+  <div class="gp-track"><div class="gp-fill" id="gp-fill"></div></div>
+</div>
+
+<div class="file-list" id="file-list">
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+    Nessun video caricato
+  </div>
+</div>
+
+<canvas id="render-canvas" style="display:none"></canvas>
+<video id="src-video" style="display:none" muted playsinline crossorigin="anonymous"></video>
+
+<script>
+const{Muxer,ArrayBufferTarget}=window.Mp4Muxer;
+let files=[],isRunning=false;
+
+const fileInput=document.getElementById('file-input');
+const dropZone=document.getElementById('drop-zone');
+const fileListEl=document.getElementById('file-list');
+const statsBar=document.getElementById('stats-bar');
+const controls=document.getElementById('controls');
+const zoomSlider=document.getElementById('zoom-slider');
+const zoomValEl=document.getElementById('zoom-val');
+const startBtn=document.getElementById('start-btn');
+const clearBtn=document.getElementById('clear-btn');
+const gpWrap=document.getElementById('gp-wrap');
+const gpFill=document.getElementById('gp-fill');
+const gpPct=document.getElementById('gp-pct');
+const gpLabel=document.getElementById('gp-label');
+const rc=document.getElementById('render-canvas');
+const rx=rc.getContext('2d');
+const srcVideo=document.getElementById('src-video');
+
+zoomSlider.oninput=()=>zoomValEl.textContent=zoomSlider.value+'%';
+
+dropZone.ondragover=(e)=>{e.preventDefault();dropZone.classList.add('drag-over')};
+dropZone.ondragleave=()=>dropZone.classList.remove('drag-over');
+dropZone.ondrop=(e)=>{e.preventDefault();dropZone.classList.remove('drag-over');addFiles(e.dataTransfer.files)};
+fileInput.onchange=(e)=>addFiles(e.target.files);
+
+function fmtSize(b){return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB'}
+
+function addFiles(newFiles){
+  const arr=Array.from(newFiles).filter(f=>f.type.startsWith('video/'));
+  arr.slice(0,100-files.length).forEach(f=>files.push({file:f,status:'pending',progress:0,id:Date.now()+Math.random()}));
+  render();updateStats();fileInput.value='';
+}
+
+function removeFile(id){
+  if(isRunning)return;
+  files=files.filter(f=>f.id!==id);
+  render();updateStats();
+}
+
+function render(){
+  if(!files.length){
+    fileListEl.innerHTML=`<div class="empty-state"><svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--hint);stroke-width:1;fill:none;margin:0 auto 16px;display:block"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nessun video caricato</div>`;
+    statsBar.style.display='none';controls.style.display='none';return;
+  }
+  statsBar.style.display='grid';controls.style.display='grid';
+  fileListEl.innerHTML=files.map(f=>`
+    <div class="file-item ${f.status}" id="fi-${f.id}">
+      <div class="file-dot ${f.status}"></div>
+      <span class="file-name" title="${f.file.name}">${f.file.name}</span>
+      <span class="file-size">${fmtSize(f.file.size)}</span>
+      ${f.status==='processing'?`<div class="mini-bar-wrap"><div class="mini-bar"><div class="mini-fill" id="mf-${f.id}" style="width:${f.progress}%"></div></div></div>`:''}
+      <span class="file-status ${f.status}">${statusLabel(f)}</span>
+      ${f.status==='pending'&&!isRunning?`<button class="rm-btn" onclick="removeFile(${f.id})"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:`<div style="width:26px;flex-shrink:0"></div>`}
+    </div>`).join('');
+}
+
+function statusLabel(f){
+  if(f.status==='pending')return 'in attesa';
+  if(f.status==='processing')return f.progress+'%';
+  if(f.status==='done')return '✓ ok';
+  if(f.status==='error')return '✕ err';
+  return '';
+}
+
+function updateStats(){
+  document.getElementById('stat-total').textContent=files.length;
+  document.getElementById('stat-done').textContent=files.filter(f=>f.status==='done').length;
+  document.getElementById('stat-remain').textContent=files.filter(f=>f.status==='pending').length;
+}
+
+function setFileStatus(id,status,progress){
+  const f=files.find(f=>f.id===id);if(!f)return;
+  f.status=status;if(progress!==undefined)f.progress=progress;
+  const el=document.getElementById(`fi-${id}`);if(!el)return;
+  el.className=`file-item ${status}`;
+  const dot=el.querySelector('.file-dot');if(dot)dot.className=`file-dot ${status}`;
+  const st=el.querySelector('.file-status');if(st){st.className=`file-status ${status}`;st.textContent=statusLabel(f);}
+  if(status==='processing'){
+    let bar=document.getElementById(`mf-${id}`);
+    if(!bar){
+      const wrap=document.createElement('div');wrap.className='mini-bar-wrap';
+      wrap.innerHTML=`<div class="mini-bar"><div class="mini-fill" id="mf-${id}" style="width:${progress||0}%"></div></div>`;
+      el.querySelector('.file-status').before(wrap);
+    }else{bar.style.width=(progress||0)+'%';}
+  }
+  updateStats();
+}
+
+clearBtn.onclick=()=>{if(isRunning)return;files=[];render();updateStats();gpWrap.style.display='none';};
+
+startBtn.onclick=async()=>{
+  if(isRunning)return;
+  const pending=files.filter(f=>f.status==='pending');
+  if(!pending.length)return;
+  isRunning=true;startBtn.disabled=true;clearBtn.disabled=true;
+  gpWrap.style.display='block';
+  const zoom=parseInt(zoomSlider.value)/100;
+  for(let i=0;i<pending.length;i++){
+    const item=pending[i];
+    gpFill.style.width=Math.round(i/pending.length*100)+'%';
+    gpPct.textContent=Math.round(i/pending.length*100)+'%';
+    gpLabel.textContent=`${i+1} / ${pending.length} — ${item.file.name}`;
+    setFileStatus(item.id,'processing',0);
+    try{
+      await processVideo(item.file,zoom,p=>setFileStatus(item.id,'processing',p));
+      setFileStatus(item.id,'done');
+    }catch(e){console.error(e);setFileStatus(item.id,'error');}
+  }
+  gpFill.style.width='100%';gpPct.textContent='100%';gpLabel.textContent='Tutti i video esportati';
+  isRunning=false;startBtn.disabled=false;clearBtn.disabled=false;
+};
+
+async function processVideo(file,zoom,onProgress){
+  srcVideo.src=URL.createObjectURL(file);
+  await new Promise((res,rej)=>{srcVideo.onloadedmetadata=res;srcVideo.onerror=rej;});
+  const W=srcVideo.videoWidth||1280,H=srcVideo.videoHeight||720,dur=srcVideo.duration;
+  rc.width=W;rc.height=H;
+  const sW=W*zoom,sH=H*zoom,oX=(sW-W)/2,oY=(sH-H)/2;
+  const fps=30,totalFrames=Math.ceil(dur*fps);
+  const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'});
+  const ve=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>{throw new Error(e.message);}});
+  ve.configure({codec:'avc1.42001F',width:W,height:H,bitrate:12_000_000,framerate:fps,avc:{format:'avc'}});
+  for(let i=0;i<totalFrames;i++){
+    srcVideo.currentTime=i/fps;
+    await new Promise(r=>{srcVideo.onseeked=r;srcVideo.onerror=r;});
+    rx.drawImage(srcVideo,-oX,-oY,sW,sH);
+    const vf=new VideoFrame(rc,{timestamp:Math.round(i/fps*1_000_000)});
+    ve.encode(vf,{keyFrame:i%30===0});vf.close();
+    if(i%5===0){onProgress(Math.round(i/totalFrames*100));await new Promise(r=>setTimeout(r,0));}
+  }
+  await ve.flush();muxer.finalize();
+  const blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=file.name.replace(/\.[^.]+$/,'')+'_no_watermark.mp4';a.click();
+  URL.revokeObjectURL(a.href);URL.revokeObjectURL(srcVideo.src);
+  onProgress(100);
+}
+</script>
+</body>
+</html>

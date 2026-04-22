@@ -28,11 +28,7 @@ body{padding:40px 32px 60px;max-width:900px;margin:0 auto}
 .logo-sub{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
 .badge{background:var(--accentbg);border:1px solid var(--accent);color:var(--accent2);font-family:'DM Mono',monospace;font-size:10px;font-weight:500;padding:5px 12px;border-radius:100px;letter-spacing:1px;align-self:center}
 
-.drop-zone{
-  border:1.5px dashed var(--border2);border-radius:var(--r);padding:52px 32px;
-  text-align:center;cursor:pointer;transition:all .25s;background:var(--s1);
-  margin-bottom:28px;
-}
+.drop-zone{border:1.5px dashed var(--border2);border-radius:var(--r);padding:52px 32px;text-align:center;cursor:pointer;transition:all .25s;background:var(--s1);margin-bottom:28px}
 .drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--s2)}
 .drop-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--s3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center}
 .drop-icon svg{width:22px;height:22px;stroke:var(--accent2);stroke-width:1.5;fill:none}
@@ -110,13 +106,13 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 <header class="header">
   <div>
     <div class="logo-title">VEO <span>Remover</span></div>
-    <div class="logo-sub">Watermark crop &middot; Batch export &middot; Max 100 video</div>
+    <div class="logo-sub">Watermark crop &middot; Bitrate adattivo &middot; Max 100 video</div>
   </div>
   <div class="badge">BROWSER TOOL</div>
 </header>
 
 <div class="tip">
-  <b>Come funziona &mdash;</b> applica uno zoom centrato che taglia i bordi dove si trova il watermark VEO, poi riesporta il video alla risoluzione originale. Regola lo zoom se necessario.
+  <b>Bitrate adattivo &mdash;</b> il bitrate di output viene calcolato automaticamente dal file originale (dimensione &divide; durata), cos&igrave; il video esportato ha dimensione e qualit&agrave; simili all&rsquo;originale. Regola lo zoom se il watermark non &egrave; completamente coperto.
 </div>
 
 <label class="drop-zone" id="drop-zone">
@@ -286,25 +282,66 @@ startBtn.onclick=async()=>{
 async function processVideo(file,zoom,onProgress){
   srcVideo.src=URL.createObjectURL(file);
   await new Promise((res,rej)=>{srcVideo.onloadedmetadata=res;srcVideo.onerror=rej;});
-  const W=srcVideo.videoWidth||1280,H=srcVideo.videoHeight||720,dur=srcVideo.duration;
+
+  const W=srcVideo.videoWidth||1280;
+  const H=srcVideo.videoHeight||720;
+  const dur=srcVideo.duration||1;
+
+  // Calcola bitrate dal file originale: dimensione in bit / durata
+  // Sottrai una stima dell'overhead audio (~128kbps) per avere solo il bitrate video
+  const totalBitrate=Math.round((file.size*8)/dur);
+  const audioBitrate=128_000;
+  const videoBitrate=Math.max(totalBitrate-audioBitrate, 200_000);
+  // Clamp: non scendere sotto 200kbps, non superare 50Mbps
+  const clampedBitrate=Math.min(Math.max(videoBitrate,200_000),50_000_000);
+
   rc.width=W;rc.height=H;
   const sW=W*zoom,sH=H*zoom,oX=(sW-W)/2,oY=(sH-H)/2;
-  const fps=30,totalFrames=Math.ceil(dur*fps);
-  const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'});
-  const ve=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>{throw new Error(e.message);}});
-  ve.configure({codec:'avc1.42001F',width:W,height:H,bitrate:12_000_000,framerate:fps,avc:{format:'avc'}});
+  const fps=30;
+  const totalFrames=Math.ceil(dur*fps);
+
+  const muxer=new Muxer({
+    target:new ArrayBufferTarget(),
+    video:{codec:'avc',width:W,height:H},
+    fastStart:'in-memory'
+  });
+
+  const ve=new VideoEncoder({
+    output:(c,m)=>muxer.addVideoChunk(c,m),
+    error:e=>{throw new Error(e.message);}
+  });
+  ve.configure({
+    codec:'avc1.42001F',
+    width:W,
+    height:H,
+    bitrate:clampedBitrate,
+    framerate:fps,
+    avc:{format:'avc'}
+  });
+
   for(let i=0;i<totalFrames;i++){
     srcVideo.currentTime=i/fps;
     await new Promise(r=>{srcVideo.onseeked=r;srcVideo.onerror=r;});
     rx.drawImage(srcVideo,-oX,-oY,sW,sH);
     const vf=new VideoFrame(rc,{timestamp:Math.round(i/fps*1_000_000)});
-    ve.encode(vf,{keyFrame:i%30===0});vf.close();
-    if(i%5===0){onProgress(Math.round(i/totalFrames*100));await new Promise(r=>setTimeout(r,0));}
+    ve.encode(vf,{keyFrame:i%30===0});
+    vf.close();
+    if(i%5===0){
+      onProgress(Math.round(i/totalFrames*100));
+      await new Promise(r=>setTimeout(r,0));
+    }
   }
-  await ve.flush();muxer.finalize();
+
+  await ve.flush();
+  muxer.finalize();
+
   const blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=file.name.replace(/\.[^.]+$/,'')+'_no_watermark.mp4';a.click();
-  URL.revokeObjectURL(a.href);URL.revokeObjectURL(srcVideo.src);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=file.name.replace(/\.[^.]+$/,'')+'_no_watermark.mp4';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  URL.revokeObjectURL(srcVideo.src);
   onProgress(100);
 }
 </script>

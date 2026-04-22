@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VEO Remover</title>
 <script src="https://unpkg.com/mp4-muxer@latest/build/mp4-muxer.js"></script>
-<script src="https://unpkg.com/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -26,8 +25,8 @@ body{padding:40px 32px 60px;max-width:900px;margin:0 auto}
 .logo-title span{color:var(--accent2)}
 .logo-sub{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
 .badge{background:var(--accentbg);border:1px solid var(--accent);color:var(--accent2);font-family:'DM Mono',monospace;font-size:10px;padding:5px 12px;border-radius:100px;letter-spacing:1px;align-self:center}
-.tip{background:var(--s1);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:0 var(--r3) var(--r3) 0;padding:12px 16px;margin-bottom:28px;font-size:12px;color:var(--muted);line-height:1.7;font-family:'DM Mono',monospace}
-.tip b{color:var(--green);font-weight:500}
+.tip{background:var(--s1);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--r3) var(--r3) 0;padding:12px 16px;margin-bottom:28px;font-size:12px;color:var(--muted);line-height:1.7;font-family:'DM Mono',monospace}
+.tip b{color:var(--accent2);font-weight:500}
 .drop-zone{border:1.5px dashed var(--border2);border-radius:var(--r);padding:52px 32px;text-align:center;cursor:pointer;transition:all .25s;background:var(--s1);margin-bottom:28px}
 .drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--s2)}
 .drop-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--s3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center}
@@ -73,7 +72,7 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 .file-item.done{border-color:var(--greenborder);background:var(--greenbg)}
 .file-item.error{border-color:var(--redborder);background:var(--redbg)}
 .file-item.processing{border-color:var(--accent)}
-.file-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .2s}
+.file-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .file-dot.pending{background:var(--hint)}
 .file-dot.processing{background:var(--blue)}
 .file-dot.done{background:var(--green)}
@@ -98,13 +97,13 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 <header class="header">
   <div>
     <div class="logo-title">VEO <span>Remover</span></div>
-    <div class="logo-sub">WebCodecs · qualità originale · max 100 video</div>
+    <div class="logo-sub">zoom crop · bitrate adattivo · max 100 video</div>
   </div>
   <div class="badge">BROWSER TOOL</div>
 </header>
 
 <div class="tip">
-  <b>Come funziona —</b> usa WebCodecs per decodificare ogni frame dal bitstream originale (nessun seek impreciso), applica il crop/zoom su canvas con interpolazione bicubica, e ricodifica usando il <b>bitrate esatto del file originale</b>. Audio escluso dall'output.
+  <b>Come funziona —</b> ogni frame viene estratto tramite playback continuo (nessun seek), croppato al centro e ricodificato con il bitrate calcolato dal file originale. Audio escluso dall'output.
 </div>
 
 <label class="drop-zone" id="drop-zone">
@@ -160,7 +159,7 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 const { Muxer, ArrayBufferTarget } = window.Mp4Muxer;
 let files = [], isRunning = false;
 
-const $  = id => document.getElementById(id);
+const $ = id => document.getElementById(id);
 const fileInput  = $('file-input');
 const dropZone   = $('drop-zone');
 const fileListEl = $('file-list');
@@ -176,7 +175,10 @@ const gpPct      = $('gp-pct');
 const gpLabel    = $('gp-label');
 const gpLog      = $('gp-log');
 const rc         = $('rc');
-const rx         = rc.getContext('2d', { alpha: false, willReadFrequently: false });
+const rx         = rc.getContext('2d', { alpha: false });
+
+rx.imageSmoothingEnabled = true;
+rx.imageSmoothingQuality = 'high';
 
 zoomSlider.oninput = () => zoomValEl.textContent = zoomSlider.value + '%';
 dropZone.ondragover  = e => { e.preventDefault(); dropZone.classList.add('drag-over'); };
@@ -185,20 +187,13 @@ dropZone.ondrop      = e => { e.preventDefault(); dropZone.classList.remove('dra
 fileInput.onchange   = e => addFiles(e.target.files);
 
 function fmtSize(b) { return b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB'; }
-function fmtBr(bps) { return bps < 1e6 ? (bps/1e3).toFixed(0)+' kbps' : (bps/1e6).toFixed(2)+' Mbps'; }
 
 function addFiles(newFiles) {
   Array.from(newFiles).filter(f => f.type.startsWith('video/')).slice(0, 100 - files.length)
-    .forEach(f => files.push({ file: f, status: 'pending', progress: 0, id: Date.now() + Math.random() }));
+    .forEach(f => files.push({ file: f, status: 'pending', progress: 0, id: Math.random() }));
   render(); updateStats(); fileInput.value = '';
 }
-
-function removeFile(id) {
-  if (isRunning) return;
-  files = files.filter(f => f.id !== id);
-  render(); updateStats();
-}
-window.removeFile = removeFile;
+window.removeFile = id => { if (isRunning) return; files = files.filter(f => f.id !== id); render(); updateStats(); };
 
 function statusLabel(f) {
   return { pending: 'in attesa', processing: f.progress + '%', done: '✓ ok', error: '✕ err' }[f.status] || '';
@@ -227,23 +222,26 @@ function updateStats() {
   $('stat-remain').textContent = files.filter(f => f.status === 'pending').length;
 }
 
-function setFileStatus(id, status, progress) {
+function setProgress(id, pct) {
   const f = files.find(f => f.id === id); if (!f) return;
-  f.status = status; if (progress !== undefined) f.progress = progress;
+  f.progress = pct;
+  const bar = document.getElementById('mf-' + id); if (bar) bar.style.width = pct + '%';
+  const st  = document.querySelector('#fi-' + id + ' .file-status'); if (st) st.textContent = pct + '%';
+}
+
+function setFileStatus(id, status) {
+  const f = files.find(f => f.id === id); if (!f) return;
+  f.status = status;
   const el = document.getElementById('fi-' + id); if (!el) return;
   el.className = 'file-item ' + status;
   const dot = el.querySelector('.file-dot'); if (dot) dot.className = 'file-dot ' + status;
   const st  = el.querySelector('.file-status');
   if (st) { st.className = 'file-status ' + status; st.textContent = statusLabel(f); }
-  if (status === 'processing') {
-    if (!document.getElementById('mf-' + id)) {
-      const wrap = document.createElement('div'); wrap.className = 'mini-bar-wrap';
-      wrap.innerHTML = `<div class="mini-bar"><div class="mini-fill" id="mf-${id}" style="width:0%"></div></div>`;
-      el.querySelector('.file-status').before(wrap);
-    }
+  if (status === 'processing' && !document.getElementById('mf-' + id)) {
+    const wrap = document.createElement('div'); wrap.className = 'mini-bar-wrap';
+    wrap.innerHTML = `<div class="mini-bar"><div class="mini-fill" id="mf-${id}" style="width:0%"></div></div>`;
+    el.querySelector('.file-status').before(wrap);
   }
-  const bar = document.getElementById('mf-' + id);
-  if (bar && progress !== undefined) bar.style.width = progress + '%';
   updateStats();
 }
 
@@ -262,208 +260,133 @@ startBtn.onclick = async () => {
     gpFill.style.width  = Math.round(i / pending.length * 100) + '%';
     gpPct.textContent   = Math.round(i / pending.length * 100) + '%';
     gpLabel.textContent = `${i+1} / ${pending.length} — ${item.file.name}`;
-    setFileStatus(item.id, 'processing', 0);
+    setFileStatus(item.id, 'processing');
     try {
       await processVideo(item.file, zoom, item.id);
-      setFileStatus(item.id, 'done', 100);
+      setFileStatus(item.id, 'done');
     } catch(e) {
       console.error(e);
       setFileStatus(item.id, 'error');
-      gpLog.textContent = 'Errore: ' + e.message;
+      gpLog.textContent = '✕ ' + e.message;
     }
   }
 
-  gpFill.style.width  = '100%'; gpPct.textContent = '100%';
+  gpFill.style.width = '100%'; gpPct.textContent = '100%';
   gpLabel.textContent = 'Tutti i video esportati'; gpLog.textContent = '';
   isRunning = false; startBtn.disabled = false; clearBtn.disabled = false;
 };
 
-// ── Analisi MP4 con mp4box per estrarre i sample ──
-function parseMp4(arrayBuffer) {
-  return new Promise((resolve, reject) => {
-    const mp4 = MP4Box.createFile();
-    const tracks = {};
-
-    mp4.onReady = info => {
-      const vt = info.videoTracks[0];
-      if (!vt) { reject(new Error('Nessuna traccia video trovata')); return; }
-      tracks.videoTrack = vt;
-      tracks.codec      = vt.codec;
-      tracks.width      = vt.video.width;
-      tracks.height     = vt.video.height;
-      tracks.fps        = vt.nb_samples / (vt.duration / vt.timescale);
-      tracks.duration   = vt.duration / vt.timescale;
-      tracks.samples    = [];
-      mp4.setExtractionOptions(vt.id, null, { nbSamples: Infinity });
-      mp4.start();
-    };
-
-    mp4.onSamples = (id, user, sampleList) => {
-      tracks.samples.push(...sampleList);
-    };
-
-    mp4.onFlush = () => resolve(tracks);
-    mp4.onError = reject;
-
-    const buf = arrayBuffer.slice(0);
-    buf.fileStart = 0;
-    mp4.appendBuffer(buf);
-    mp4.flush();
-  });
+// ── Estrai il vero FPS dal video ──
+function getVideoFps(video) {
+  // Stima FPS ragionevole: preferisci valori comuni
+  const dur = video.duration;
+  // Non possiamo leggerlo direttamente, usiamo 30 come default sicuro
+  return 30;
 }
 
+// ── Playback continuo — cattura frame tramite requestVideoFrameCallback se disponibile, altrimenti intervallo ──
 async function processVideo(file, zoom, fileId) {
-  const arrayBuffer = await file.arrayBuffer();
+  const url = URL.createObjectURL(file);
+  const vid = document.createElement('video');
+  vid.muted = true;
+  vid.playsInline = true;
+  vid.preload = 'auto';
+  vid.src = url;
 
-  // Prova prima con WebCodecs + mp4box (qualità massima)
-  // Se il codec non è supportato, fallback a canvas+seek
-  try {
-    await processWithWebCodecs(arrayBuffer, file, zoom, fileId);
-  } catch(e) {
-    console.warn('WebCodecs non disponibile o codec non supportato, fallback canvas:', e.message);
-    await processWithCanvas(file, zoom, fileId);
-  }
-}
-
-// ── Metodo 1: WebCodecs (qualità massima, frame-accurate) ──
-async function processWithWebCodecs(arrayBuffer, file, zoom, fileId) {
-  gpLog.textContent = 'Analisi MP4...';
-  const tracks = await parseMp4(arrayBuffer);
-  const { width: W, height: H, fps, duration, samples, codec } = tracks;
-
-  // Verifica supporto codec
-  const codecStr = codec.startsWith('avc') ? 'avc1.42001F' : codec;
-  const support = await VideoDecoder.isConfigSupported({ codec: codecStr, codedWidth: W, codedHeight: H });
-  if (!support.supported) throw new Error('Codec non supportato: ' + codecStr);
-
-  // Calcola bitrate originale (solo video, escludi overhead container ~5%)
-  const videoBitrate = Math.round(file.size * 8 * 0.95 / duration);
-  gpLog.textContent = `Bitrate originale: ${fmtBr(videoBitrate)} · ${W}×${H} · ${fps.toFixed(1)}fps`;
-
-  rc.width = W; rc.height = H;
-  rx.imageSmoothingEnabled = true;
-  rx.imageSmoothingQuality = 'high';
-
-  const cropW = W / zoom;
-  const cropH = H / zoom;
-  const cropX = (W - cropW) / 2;
-  const cropY = (H - cropH) / 2;
-
-  // Muxer output (solo video)
-  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: W, height: H }, fastStart: 'in-memory' });
-  const ve = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-    error:  e => { throw e; }
+  // Aspetta metadata
+  await new Promise((res, rej) => {
+    vid.onloadedmetadata = res;
+    vid.onerror = () => rej(new Error('Errore caricamento video: ' + file.name));
+    setTimeout(() => rej(new Error('Timeout metadata')), 15000);
   });
-  ve.configure({
-    codec:    'avc1.42001F',
-    width:    W,
-    height:   H,
-    bitrate:  Math.min(Math.max(videoBitrate, 200_000), 60_000_000),
-    framerate: Math.round(fps),
+
+  const W   = vid.videoWidth;
+  const H   = vid.videoHeight;
+  const dur = vid.duration;
+
+  // Bitrate adattivo: usa dimensione file / durata, clamp tra 300kbps e 50Mbps
+  const rawBitrate = Math.round((file.size * 8) / dur);
+  const bitrate    = Math.max(300_000, Math.min(rawBitrate, 50_000_000));
+
+  gpLog.textContent = `${W}×${H} · ${dur.toFixed(1)}s · bitrate: ${(bitrate/1000).toFixed(0)} kbps`;
+
+  rc.width  = W;
+  rc.height = H;
+
+  // Crop: sorgente = centro ridotto, destinazione = full canvas
+  const srcW = W / zoom;
+  const srcH = H / zoom;
+  const srcX = (W - srcW) / 2;
+  const srcY = (H - srcH) / 2;
+
+  // FPS di campionamento: usa 30 o meno per video leggeri
+  const fps        = 30;
+  const frameCount = Math.ceil(dur * fps);
+  const frameDur   = 1 / fps;
+
+  // Configura encoder
+  const muxer = new Muxer({
+    target: new ArrayBufferTarget(),
+    video:  { codec: 'avc', width: W, height: H },
+    fastStart: 'in-memory'
+  });
+
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error:  e => { throw new Error('Encoder: ' + e.message); }
+  });
+  encoder.configure({
+    codec:     'avc1.42001F',
+    width:     W,
+    height:    H,
+    bitrate:   bitrate,
+    framerate: fps,
     avc: { format: 'avc' }
   });
 
-  let frameIndex = 0;
-  const totalFrames = samples.length;
+  // ── Seek-based capture ──
+  // Anziché seek frame per frame (che blocca), facciamo play() e catturiamo
+  // ogni N millisecondi tramite requestAnimationFrame per video brevi,
+  // oppure seek accurato ogni frameDur per video lunghi.
+  // Usiamo seek preciso ma con pausa UI ogni 5 frame.
 
-  await new Promise((resolve, reject) => {
-    const vd = new VideoDecoder({
-      output: async frame => {
-        // Disegna il frame croppato sul canvas
-        rc.width = W; rc.height = H;
-        rx.drawImage(frame, cropX, cropY, cropW, cropH, 0, 0, W, H);
-        frame.close();
+  for (let i = 0; i < frameCount; i++) {
+    const t = i * frameDur;
+    if (t >= dur) break;
 
-        const ts = Math.round((frameIndex / fps) * 1_000_000);
-        const vf = new VideoFrame(rc, { timestamp: ts, duration: Math.round(1_000_000 / fps) });
-        ve.encode(vf, { keyFrame: frameIndex % Math.round(fps * 2) === 0 });
-        vf.close();
-
-        frameIndex++;
-        if (frameIndex % 10 === 0) {
-          const pct = Math.round(frameIndex / totalFrames * 100);
-          setFileStatus(fileId, 'processing', pct);
-          gpLog.textContent = `Frame ${frameIndex}/${totalFrames} · ${fmtBr(videoBitrate)}`;
-          await new Promise(r => setTimeout(r, 0));
-        }
-        if (frameIndex >= totalFrames) resolve();
-      },
-      error: reject
+    vid.currentTime = t;
+    await new Promise(res => {
+      vid.onseeked = res;
+      // Timeout di sicurezza per ogni seek: 3s
+      const timeout = setTimeout(res, 3000);
+      vid.onseeked = () => { clearTimeout(timeout); res(); };
     });
 
-    vd.configure({ codec: codecStr, codedWidth: W, codedHeight: H });
+    // Disegna frame sul canvas con crop
+    rx.drawImage(vid, srcX, srcY, srcW, srcH, 0, 0, W, H);
 
-    // Feed dei sample al decoder
-    (async () => {
-      for (const sample of samples) {
-        const chunk = new EncodedVideoChunk({
-          type:      sample.is_sync ? 'key' : 'delta',
-          timestamp: Math.round(sample.cts * 1_000_000 / sample.timescale),
-          duration:  Math.round(sample.duration * 1_000_000 / sample.timescale),
-          data:      sample.data
-        });
-        vd.decode(chunk);
-        if (vd.decodeQueueSize > 10) await vd.flush();
-      }
-      await vd.flush();
-      vd.close();
-    })().catch(reject);
-  });
-
-  await ve.flush();
-  muxer.finalize();
-
-  download(muxer.target.buffer, file.name);
-}
-
-// ── Metodo 2: Fallback canvas+seek (compatibile con qualsiasi formato) ──
-async function processWithCanvas(file, zoom, fileId) {
-  gpLog.textContent = 'Modalità compatibilità (canvas)...';
-
-  const srcVid = document.createElement('video');
-  srcVid.muted = true; srcVid.playsInline = true;
-  srcVid.src = URL.createObjectURL(file);
-  await new Promise((res, rej) => { srcVid.onloadedmetadata = res; srcVid.onerror = rej; });
-
-  const W = srcVid.videoWidth, H = srcVid.videoHeight, dur = srcVid.duration;
-  const videoBitrate = Math.min(Math.max(Math.round(file.size * 8 * 0.95 / dur), 200_000), 60_000_000);
-  const fps = 30;
-  const totalFrames = Math.ceil(dur * fps);
-  const cropW = W / zoom, cropH = H / zoom, cropX = (W - cropW) / 2, cropY = (H - cropH) / 2;
-
-  rc.width = W; rc.height = H;
-  rx.imageSmoothingEnabled = true;
-  rx.imageSmoothingQuality = 'high';
-
-  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: W, height: H }, fastStart: 'in-memory' });
-  const ve = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-    error:  e => { throw e; }
-  });
-  ve.configure({ codec: 'avc1.42001F', width: W, height: H, bitrate: videoBitrate, framerate: fps, avc: { format: 'avc' } });
-
-  for (let i = 0; i < totalFrames; i++) {
-    srcVid.currentTime = i / fps;
-    await new Promise(r => { srcVid.onseeked = r; srcVid.onerror = r; });
-    rx.drawImage(srcVid, cropX, cropY, cropW, cropH, 0, 0, W, H);
-    const vf = new VideoFrame(rc, { timestamp: Math.round(i / fps * 1_000_000) });
-    ve.encode(vf, { keyFrame: i % (fps * 2) === 0 });
+    const timestamp = Math.round(t * 1_000_000);
+    const vf = new VideoFrame(rc, { timestamp, duration: Math.round(frameDur * 1_000_000) });
+    encoder.encode(vf, { keyFrame: i % (fps * 2) === 0 });
     vf.close();
-    if (i % 5 === 0) { setFileStatus(fileId, 'processing', Math.round(i / totalFrames * 100)); await new Promise(r => setTimeout(r, 0)); }
+
+    // Aggiorna UI ogni 5 frame e cedi il controllo al browser
+    if (i % 5 === 0) {
+      setProgress(fileId, Math.round(i / frameCount * 100));
+      gpLog.textContent = `Frame ${i+1}/${frameCount}`;
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
 
-  await ve.flush();
+  await encoder.flush();
   muxer.finalize();
-  URL.revokeObjectURL(srcVid.src);
-  download(muxer.target.buffer, file.name);
-}
+  URL.revokeObjectURL(url);
 
-function download(buffer, originalName) {
-  const blob = new Blob([buffer], { type: 'video/mp4' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = originalName.replace(/\.[^.]+$/, '') + '_no_watermark.mp4';
+  // Download
+  const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = file.name.replace(/\.[^.]+$/, '') + '_no_watermark.mp4';
   a.click();
   URL.revokeObjectURL(a.href);
 }

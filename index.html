@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VEO Remover</title>
-<script src="https://unpkg.com/mp4-muxer@latest/build/mp4-muxer.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -16,25 +14,33 @@
   --accent:#7c6dfa;--accent2:#a78bfa;--accentbg:#7c6dfa18;
   --green:#22d3a0;--greenbg:#22d3a012;--greenborder:#22d3a030;
   --red:#f87171;--redbg:#f8717112;--redborder:#f8717130;
-  --blue:#60a5fa;--bluebg:#60a5fa12;
+  --blue:#60a5fa;
   --r:14px;--r2:10px;--r3:8px;
 }
 html,body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh}
 body{padding:40px 32px 60px;max-width:900px;margin:0 auto}
 
 .header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:40px}
-.logo-title{font-size:26px;font-weight:800;letter-spacing:-1px;color:var(--text);margin-bottom:4px}
+.logo-title{font-size:26px;font-weight:800;letter-spacing:-1px;margin-bottom:4px}
 .logo-title span{color:var(--accent2)}
 .logo-sub{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
-.badge{background:var(--accentbg);border:1px solid var(--accent);color:var(--accent2);font-family:'DM Mono',monospace;font-size:10px;font-weight:500;padding:5px 12px;border-radius:100px;letter-spacing:1px;align-self:center}
+.badge{background:var(--accentbg);border:1px solid var(--accent);color:var(--accent2);font-family:'DM Mono',monospace;font-size:10px;padding:5px 12px;border-radius:100px;letter-spacing:1px;align-self:center}
 
 .drop-zone{border:1.5px dashed var(--border2);border-radius:var(--r);padding:52px 32px;text-align:center;cursor:pointer;transition:all .25s;background:var(--s1);margin-bottom:28px}
 .drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--s2)}
 .drop-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:14px;background:var(--s3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center}
 .drop-icon svg{width:22px;height:22px;stroke:var(--accent2);stroke-width:1.5;fill:none}
-.drop-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
+.drop-title{font-size:15px;font-weight:700;margin-bottom:6px}
 .drop-sub{font-size:12px;color:var(--muted);font-family:'DM Mono',monospace}
 .drop-zone input{display:none}
+
+.loader-wrap{background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:24px 20px;margin-bottom:28px;text-align:center}
+.loader-title{font-size:13px;font-weight:700;margin-bottom:6px;color:var(--accent2)}
+.loader-sub{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:14px}
+.loader-bar-wrap{height:4px;background:var(--s3);border-radius:2px;overflow:hidden}
+.loader-bar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;transition:width .3s;animation:indeterminate 1.4s infinite}
+@keyframes indeterminate{0%{transform:translateX(-100%);width:60%}100%{transform:translateX(200%);width:60%}}
+.loader-bar.done{animation:none;width:100%;background:var(--green)}
 
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px}
 .stat-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px}
@@ -56,19 +62,20 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 .btn svg{width:15px;height:15px;stroke-width:2;fill:none;flex-shrink:0}
 .btn-primary{background:var(--accent);color:#fff}
 .btn-primary svg{stroke:#fff}
-.btn-primary:hover{background:var(--accent2)}
+.btn-primary:hover:not(:disabled){background:var(--accent2)}
 .btn-primary:disabled{opacity:.3;cursor:not-allowed}
 .btn-ghost{background:var(--s1);color:var(--muted);border:1px solid var(--border)}
 .btn-ghost svg{stroke:var(--muted)}
-.btn-ghost:hover{border-color:var(--border3);color:var(--text)}
+.btn-ghost:hover:not(:disabled){border-color:var(--border3);color:var(--text)}
 .btn-ghost:disabled{opacity:.3;cursor:not-allowed}
 
 .gp-wrap{background:var(--s1);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px;margin-bottom:24px;display:none}
 .gp-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.gp-label{font-size:12px;font-weight:600;color:var(--text);max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gp-label{font-size:12px;font-weight:600;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gp-pct{font-family:'DM Mono',monospace;font-size:13px;font-weight:500;color:var(--accent2)}
 .gp-track{height:5px;background:var(--s3);border-radius:3px;overflow:hidden}
-.gp-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;width:0;transition:width .12s}
+.gp-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;width:0;transition:width .15s}
+.gp-log{font-family:'DM Mono',monospace;font-size:10px;color:var(--hint);margin-top:10px;min-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .file-list{display:flex;flex-direction:column;gap:6px}
 .empty-state{text-align:center;padding:64px 24px;color:var(--hint);font-size:13px;font-family:'DM Mono',monospace}
@@ -83,7 +90,7 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 .file-dot.processing{background:var(--blue)}
 .file-dot.done{background:var(--green)}
 .file-dot.error{background:var(--red)}
-.file-name{flex:1;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-name{flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-size{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0}
 .mini-bar-wrap{width:72px;flex-shrink:0}
 .mini-bar{height:3px;background:var(--s3);border-radius:2px;overflow:hidden}
@@ -97,8 +104,8 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 .rm-btn svg{width:12px;height:12px;stroke:currentColor;stroke-width:2;fill:none}
 .rm-btn:hover{border-color:var(--redborder);color:var(--red);background:var(--redbg)}
 
-.tip{background:var(--s1);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--r3) var(--r3) 0;padding:12px 16px;margin-bottom:28px;font-size:12px;color:var(--muted);line-height:1.7;font-family:'DM Mono',monospace}
-.tip b{color:var(--accent2);font-weight:500}
+.tip{background:var(--s1);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:0 var(--r3) var(--r3) 0;padding:12px 16px;margin-bottom:28px;font-size:12px;color:var(--muted);line-height:1.7;font-family:'DM Mono',monospace}
+.tip b{color:var(--green);font-weight:500}
 </style>
 </head>
 <body>
@@ -106,21 +113,27 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 <header class="header">
   <div>
     <div class="logo-title">VEO <span>Remover</span></div>
-    <div class="logo-sub">Watermark crop &middot; Bitrate adattivo &middot; Max 100 video</div>
+    <div class="logo-sub">FFmpeg · qualità originale · max 100 video</div>
   </div>
   <div class="badge">BROWSER TOOL</div>
 </header>
 
 <div class="tip">
-  <b>Bitrate adattivo &mdash;</b> il bitrate di output viene calcolato automaticamente dal file originale (dimensione &divide; durata), cos&igrave; il video esportato ha dimensione e qualit&agrave; simili all&rsquo;originale. Regola lo zoom se il watermark non &egrave; completamente coperto.
+  <b>Qualità originale garantita —</b> usa FFmpeg (WebAssembly) con filtro <code>crop</code> e <code>-crf</code> adattivo al bitrate del file. Solo video, nessuna traccia audio nell'output.
 </div>
 
-<label class="drop-zone" id="drop-zone">
+<div class="loader-wrap" id="ffmpeg-loader">
+  <div class="loader-title">Caricamento FFmpeg...</div>
+  <div class="loader-sub">download una-tantum ~10MB · solo al primo avvio</div>
+  <div class="loader-bar-wrap"><div class="loader-bar" id="loader-bar"></div></div>
+</div>
+
+<label class="drop-zone" id="drop-zone" style="display:none">
   <div class="drop-icon">
     <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
   </div>
   <div class="drop-title">Trascina i video qui oppure clicca per selezionarli</div>
-  <div class="drop-sub">MP4 &middot; MOV &middot; WebM &middot; AVI &nbsp;&nbsp;/&nbsp;&nbsp; fino a 100 file</div>
+  <div class="drop-sub">MP4 · MOV · WebM · AVI &nbsp;/&nbsp; fino a 100 file</div>
   <input type="file" id="file-input" accept="video/*" multiple>
 </label>
 
@@ -152,6 +165,7 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
     <span class="gp-pct" id="gp-pct">0%</span>
   </div>
   <div class="gp-track"><div class="gp-fill" id="gp-fill"></div></div>
+  <div class="gp-log" id="gp-log"></div>
 </div>
 
 <div class="file-list" id="file-list">
@@ -161,188 +175,247 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
   </div>
 </div>
 
-<canvas id="render-canvas" style="display:none"></canvas>
-<video id="src-video" style="display:none" muted playsinline crossorigin="anonymous"></video>
+<script type="module">
+import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+import { fetchFile, toBlobURL } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
 
-<script>
-const{Muxer,ArrayBufferTarget}=window.Mp4Muxer;
-let files=[],isRunning=false;
+let files = [], isRunning = false, ffmpeg = null, ffmpegReady = false;
 
-const fileInput=document.getElementById('file-input');
-const dropZone=document.getElementById('drop-zone');
-const fileListEl=document.getElementById('file-list');
-const statsBar=document.getElementById('stats-bar');
-const controls=document.getElementById('controls');
-const zoomSlider=document.getElementById('zoom-slider');
-const zoomValEl=document.getElementById('zoom-val');
-const startBtn=document.getElementById('start-btn');
-const clearBtn=document.getElementById('clear-btn');
-const gpWrap=document.getElementById('gp-wrap');
-const gpFill=document.getElementById('gp-fill');
-const gpPct=document.getElementById('gp-pct');
-const gpLabel=document.getElementById('gp-label');
-const rc=document.getElementById('render-canvas');
-const rx=rc.getContext('2d');
-const srcVideo=document.getElementById('src-video');
+const fileInput  = document.getElementById('file-input');
+const dropZone   = document.getElementById('drop-zone');
+const fileListEl = document.getElementById('file-list');
+const statsBar   = document.getElementById('stats-bar');
+const controls   = document.getElementById('controls');
+const zoomSlider = document.getElementById('zoom-slider');
+const zoomValEl  = document.getElementById('zoom-val');
+const startBtn   = document.getElementById('start-btn');
+const clearBtn   = document.getElementById('clear-btn');
+const gpWrap     = document.getElementById('gp-wrap');
+const gpFill     = document.getElementById('gp-fill');
+const gpPct      = document.getElementById('gp-pct');
+const gpLabel    = document.getElementById('gp-label');
+const gpLog      = document.getElementById('gp-log');
+const loaderWrap = document.getElementById('ffmpeg-loader');
+const loaderBar  = document.getElementById('loader-bar');
 
-zoomSlider.oninput=()=>zoomValEl.textContent=zoomSlider.value+'%';
+zoomSlider.oninput = () => zoomValEl.textContent = zoomSlider.value + '%';
 
-dropZone.ondragover=(e)=>{e.preventDefault();dropZone.classList.add('drag-over')};
-dropZone.ondragleave=()=>dropZone.classList.remove('drag-over');
-dropZone.ondrop=(e)=>{e.preventDefault();dropZone.classList.remove('drag-over');addFiles(e.dataTransfer.files)};
-fileInput.onchange=(e)=>addFiles(e.target.files);
+// ── Load FFmpeg ──
+async function loadFFmpeg() {
+  ffmpeg = new FFmpeg();
 
-function fmtSize(b){return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB'}
+  ffmpeg.on('log', ({ message }) => {
+    gpLog.textContent = message;
+    // Parse progress from FFmpeg output
+    const m = message.match(/time=(\d+):(\d+):([\d.]+)/);
+    if (m && currentFileDur > 0) {
+      const secs = parseInt(m[1])*3600 + parseInt(m[2])*60 + parseFloat(m[3]);
+      const pct = Math.min(99, Math.round(secs / currentFileDur * 100));
+      updateCurrentFileProgress(pct);
+    }
+  });
 
-function addFiles(newFiles){
-  const arr=Array.from(newFiles).filter(f=>f.type.startsWith('video/'));
-  arr.slice(0,100-files.length).forEach(f=>files.push({file:f,status:'pending',progress:0,id:Date.now()+Math.random()}));
-  render();updateStats();fileInput.value='';
+  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+
+  ffmpegReady = true;
+  loaderBar.classList.add('done');
+  document.querySelector('.loader-title').textContent = '✓ FFmpeg pronto';
+  document.querySelector('.loader-sub').textContent = 'Carica i tuoi video per iniziare';
+  setTimeout(() => { loaderWrap.style.display = 'none'; dropZone.style.display = 'block'; }, 800);
 }
 
-function removeFile(id){
-  if(isRunning)return;
-  files=files.filter(f=>f.id!==id);
-  render();updateStats();
+loadFFmpeg().catch(err => {
+  document.querySelector('.loader-title').textContent = '✕ Errore caricamento FFmpeg';
+  document.querySelector('.loader-sub').textContent = err.message;
+  console.error(err);
+});
+
+// ── Drag & drop ──
+dropZone.ondragover  = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
+dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
+dropZone.ondrop      = (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); addFiles(e.dataTransfer.files); };
+fileInput.onchange   = (e) => addFiles(e.target.files);
+
+function fmtSize(b) { return b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB'; }
+
+function addFiles(newFiles) {
+  const arr = Array.from(newFiles).filter(f => f.type.startsWith('video/'));
+  arr.slice(0, 100 - files.length).forEach(f => files.push({ file: f, status: 'pending', progress: 0, id: Date.now() + Math.random() }));
+  render(); updateStats(); fileInput.value = '';
 }
 
-function render(){
-  if(!files.length){
-    fileListEl.innerHTML=`<div class="empty-state"><svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--hint);stroke-width:1;fill:none;margin:0 auto 16px;display:block"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nessun video caricato</div>`;
-    statsBar.style.display='none';controls.style.display='none';return;
+function removeFile(id) {
+  if (isRunning) return;
+  files = files.filter(f => f.id !== id);
+  render(); updateStats();
+}
+window.removeFile = removeFile;
+
+function render() {
+  if (!files.length) {
+    fileListEl.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--hint);stroke-width:1;fill:none;margin:0 auto 16px;display:block"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nessun video caricato</div>`;
+    statsBar.style.display = 'none'; controls.style.display = 'none'; return;
   }
-  statsBar.style.display='grid';controls.style.display='grid';
-  fileListEl.innerHTML=files.map(f=>`
+  statsBar.style.display = 'grid'; controls.style.display = 'grid';
+  fileListEl.innerHTML = files.map(f => `
     <div class="file-item ${f.status}" id="fi-${f.id}">
       <div class="file-dot ${f.status}"></div>
       <span class="file-name" title="${f.file.name}">${f.file.name}</span>
       <span class="file-size">${fmtSize(f.file.size)}</span>
-      ${f.status==='processing'?`<div class="mini-bar-wrap"><div class="mini-bar"><div class="mini-fill" id="mf-${f.id}" style="width:${f.progress}%"></div></div></div>`:''}
+      ${f.status === 'processing' ? `<div class="mini-bar-wrap"><div class="mini-bar"><div class="mini-fill" id="mf-${f.id}" style="width:${f.progress}%"></div></div></div>` : ''}
       <span class="file-status ${f.status}">${statusLabel(f)}</span>
-      ${f.status==='pending'&&!isRunning?`<button class="rm-btn" onclick="removeFile(${f.id})"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:`<div style="width:26px;flex-shrink:0"></div>`}
+      ${f.status === 'pending' && !isRunning ? `<button class="rm-btn" onclick="removeFile(${f.id})"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : `<div style="width:26px;flex-shrink:0"></div>`}
     </div>`).join('');
 }
 
-function statusLabel(f){
-  if(f.status==='pending')return 'in attesa';
-  if(f.status==='processing')return f.progress+'%';
-  if(f.status==='done')return '✓ ok';
-  if(f.status==='error')return '✕ err';
+function statusLabel(f) {
+  if (f.status === 'pending')    return 'in attesa';
+  if (f.status === 'processing') return f.progress + '%';
+  if (f.status === 'done')       return '✓ ok';
+  if (f.status === 'error')      return '✕ err';
   return '';
 }
 
-function updateStats(){
-  document.getElementById('stat-total').textContent=files.length;
-  document.getElementById('stat-done').textContent=files.filter(f=>f.status==='done').length;
-  document.getElementById('stat-remain').textContent=files.filter(f=>f.status==='pending').length;
+function updateStats() {
+  document.getElementById('stat-total').textContent  = files.length;
+  document.getElementById('stat-done').textContent   = files.filter(f => f.status === 'done').length;
+  document.getElementById('stat-remain').textContent = files.filter(f => f.status === 'pending').length;
 }
 
-function setFileStatus(id,status,progress){
-  const f=files.find(f=>f.id===id);if(!f)return;
-  f.status=status;if(progress!==undefined)f.progress=progress;
-  const el=document.getElementById(`fi-${id}`);if(!el)return;
-  el.className=`file-item ${status}`;
-  const dot=el.querySelector('.file-dot');if(dot)dot.className=`file-dot ${status}`;
-  const st=el.querySelector('.file-status');if(st){st.className=`file-status ${status}`;st.textContent=statusLabel(f);}
-  if(status==='processing'){
-    let bar=document.getElementById(`mf-${id}`);
-    if(!bar){
-      const wrap=document.createElement('div');wrap.className='mini-bar-wrap';
-      wrap.innerHTML=`<div class="mini-bar"><div class="mini-fill" id="mf-${id}" style="width:${progress||0}%"></div></div>`;
+let currentFileId = null, currentFileDur = 0;
+
+function updateCurrentFileProgress(pct) {
+  if (!currentFileId) return;
+  const f = files.find(f => f.id === currentFileId);
+  if (!f) return;
+  f.progress = pct;
+  const bar = document.getElementById(`mf-${currentFileId}`);
+  if (bar) bar.style.width = pct + '%';
+  const st = document.querySelector(`#fi-${currentFileId} .file-status`);
+  if (st) st.textContent = pct + '%';
+}
+
+function setFileStatus(id, status, progress) {
+  const f = files.find(f => f.id === id); if (!f) return;
+  f.status = status; if (progress !== undefined) f.progress = progress;
+  const el = document.getElementById(`fi-${id}`); if (!el) return;
+  el.className = `file-item ${status}`;
+  const dot = el.querySelector('.file-dot'); if (dot) dot.className = `file-dot ${status}`;
+  const st  = el.querySelector('.file-status');
+  if (st) { st.className = `file-status ${status}`; st.textContent = statusLabel(f); }
+  if (status === 'processing') {
+    let bar = document.getElementById(`mf-${id}`);
+    if (!bar) {
+      const wrap = document.createElement('div'); wrap.className = 'mini-bar-wrap';
+      wrap.innerHTML = `<div class="mini-bar"><div class="mini-fill" id="mf-${id}" style="width:0%"></div></div>`;
       el.querySelector('.file-status').before(wrap);
-    }else{bar.style.width=(progress||0)+'%';}
+    }
   }
   updateStats();
 }
 
-clearBtn.onclick=()=>{if(isRunning)return;files=[];render();updateStats();gpWrap.style.display='none';};
+clearBtn.onclick = () => { if (isRunning) return; files = []; render(); updateStats(); gpWrap.style.display = 'none'; };
 
-startBtn.onclick=async()=>{
-  if(isRunning)return;
-  const pending=files.filter(f=>f.status==='pending');
-  if(!pending.length)return;
-  isRunning=true;startBtn.disabled=true;clearBtn.disabled=true;
-  gpWrap.style.display='block';
-  const zoom=parseInt(zoomSlider.value)/100;
-  for(let i=0;i<pending.length;i++){
-    const item=pending[i];
-    gpFill.style.width=Math.round(i/pending.length*100)+'%';
-    gpPct.textContent=Math.round(i/pending.length*100)+'%';
-    gpLabel.textContent=`${i+1} / ${pending.length} — ${item.file.name}`;
-    setFileStatus(item.id,'processing',0);
-    try{
-      await processVideo(item.file,zoom,p=>setFileStatus(item.id,'processing',p));
-      setFileStatus(item.id,'done');
-    }catch(e){console.error(e);setFileStatus(item.id,'error');}
-  }
-  gpFill.style.width='100%';gpPct.textContent='100%';gpLabel.textContent='Tutti i video esportati';
-  isRunning=false;startBtn.disabled=false;clearBtn.disabled=false;
-};
+startBtn.onclick = async () => {
+  if (isRunning || !ffmpegReady) return;
+  const pending = files.filter(f => f.status === 'pending');
+  if (!pending.length) return;
+  isRunning = true; startBtn.disabled = true; clearBtn.disabled = true;
+  gpWrap.style.display = 'block';
+  const zoom = parseInt(zoomSlider.value) / 100;
 
-async function processVideo(file,zoom,onProgress){
-  srcVideo.src=URL.createObjectURL(file);
-  await new Promise((res,rej)=>{srcVideo.onloadedmetadata=res;srcVideo.onerror=rej;});
-
-  const W=srcVideo.videoWidth||1280;
-  const H=srcVideo.videoHeight||720;
-  const dur=srcVideo.duration||1;
-
-  // Calcola bitrate dal file originale: dimensione in bit / durata
-  // Sottrai una stima dell'overhead audio (~128kbps) per avere solo il bitrate video
-  const totalBitrate=Math.round((file.size*8)/dur);
-  const audioBitrate=128_000;
-  const videoBitrate=Math.max(totalBitrate-audioBitrate, 200_000);
-  // Clamp: non scendere sotto 200kbps, non superare 50Mbps
-  const clampedBitrate=Math.min(Math.max(videoBitrate,200_000),50_000_000);
-
-  rc.width=W;rc.height=H;
-  const sW=W*zoom,sH=H*zoom,oX=(sW-W)/2,oY=(sH-H)/2;
-  const fps=30;
-  const totalFrames=Math.ceil(dur*fps);
-
-  const muxer=new Muxer({
-    target:new ArrayBufferTarget(),
-    video:{codec:'avc',width:W,height:H},
-    fastStart:'in-memory'
-  });
-
-  const ve=new VideoEncoder({
-    output:(c,m)=>muxer.addVideoChunk(c,m),
-    error:e=>{throw new Error(e.message);}
-  });
-  ve.configure({
-    codec:'avc1.42001F',
-    width:W,
-    height:H,
-    bitrate:clampedBitrate,
-    framerate:fps,
-    avc:{format:'avc'}
-  });
-
-  for(let i=0;i<totalFrames;i++){
-    srcVideo.currentTime=i/fps;
-    await new Promise(r=>{srcVideo.onseeked=r;srcVideo.onerror=r;});
-    rx.drawImage(srcVideo,-oX,-oY,sW,sH);
-    const vf=new VideoFrame(rc,{timestamp:Math.round(i/fps*1_000_000)});
-    ve.encode(vf,{keyFrame:i%30===0});
-    vf.close();
-    if(i%5===0){
-      onProgress(Math.round(i/totalFrames*100));
-      await new Promise(r=>setTimeout(r,0));
+  for (let i = 0; i < pending.length; i++) {
+    const item = pending[i];
+    gpFill.style.width = Math.round(i / pending.length * 100) + '%';
+    gpPct.textContent  = Math.round(i / pending.length * 100) + '%';
+    gpLabel.textContent = `${i+1} / ${pending.length} — ${item.file.name}`;
+    setFileStatus(item.id, 'processing', 0);
+    currentFileId = item.id;
+    try {
+      await processVideo(item.file, zoom);
+      setFileStatus(item.id, 'done', 100);
+    } catch(e) {
+      console.error(e); setFileStatus(item.id, 'error');
     }
   }
 
-  await ve.flush();
-  muxer.finalize();
+  gpFill.style.width = '100%'; gpPct.textContent = '100%';
+  gpLabel.textContent = 'Tutti i video esportati';
+  gpLog.textContent = '';
+  isRunning = false; currentFileId = null;
+  startBtn.disabled = false; clearBtn.disabled = false;
+};
 
-  const blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=file.name.replace(/\.[^.]+$/,'')+'_no_watermark.mp4';
+async function processVideo(file, zoom) {
+  // Calcola durata per il parsing del progresso
+  const tmpUrl = URL.createObjectURL(file);
+  await new Promise(res => {
+    const v = document.createElement('video');
+    v.src = tmpUrl; v.muted = true;
+    v.onloadedmetadata = () => { currentFileDur = v.duration; URL.revokeObjectURL(tmpUrl); res(); };
+    v.onerror = () => { currentFileDur = 0; URL.revokeObjectURL(tmpUrl); res(); };
+  });
+
+  const inName  = 'input_' + Date.now() + '.' + (file.name.split('.').pop() || 'mp4');
+  const outName = 'output_' + Date.now() + '.mp4';
+
+  // Scrivi il file nel filesystem virtuale di FFmpeg
+  await ffmpeg.writeFile(inName, await fetchFile(file));
+
+  // Calcola il CRF dal bitrate originale del file
+  // Bitrate originale (bps) = filesize*8 / duration
+  // Mappiamo: <500kbps→CRF28, 500k-1M→CRF26, 1-3M→CRF24, 3-8M→CRF22, >8M→CRF20
+  const bitrate = currentFileDur > 0 ? (file.size * 8) / currentFileDur : 2_000_000;
+  let crf;
+  if      (bitrate < 500_000)   crf = 28;
+  else if (bitrate < 1_000_000) crf = 26;
+  else if (bitrate < 3_000_000) crf = 24;
+  else if (bitrate < 8_000_000) crf = 22;
+  else                          crf = 20;
+
+  // Filtro FFmpeg:
+  // 1. zoompan/scale: ingrandisce di `zoom` mantenendo le dimensioni originali
+  //    crop=iw/zoom:ih/zoom:(iw-iw/zoom)/2:(ih-ih/zoom)/2  → ritaglia il centro
+  //    scale=iw*zoom:ih*zoom → poi ridimensiona al formato originale
+  // Oppure più semplice e preciso:
+  //    scale=iw*zoom:ih*zoom, crop=ow/zoom:oh/zoom  non funziona bene
+  // Il modo corretto con FFmpeg:
+  //    crop=iw/zoom:ih/zoom:(iw-iw/zoom)/2:(ih-ih/zoom)/2, scale=iw*zoom:ih*zoom
+  // Usiamo espressioni FFmpeg con in_w / in_h
+  const zInv = (1 / zoom).toFixed(6);
+  const vf = `crop=in_w*${zInv}:in_h*${zInv}:(in_w-in_w*${zInv})/2:(in_h-in_h*${zInv})/2,scale=in_w/iw*in_w:in_h/ih*in_h`;
+
+  // Filtro semplificato e corretto:
+  // crop taglia il centro (1/zoom delle dimensioni), poi scale riporta alle dimensioni originali
+  const filterStr = `crop=iw*${zInv}:ih*${zInv}:(iw-iw*${zInv})/2:(ih-ih*${zInv})/2,scale=iw*${zoom.toFixed(6)}:ih*${zoom.toFixed(6)}`;
+
+  await ffmpeg.exec([
+    '-i', inName,
+    '-vf', filterStr,
+    '-c:v', 'libx264',
+    '-crf', String(crf),
+    '-preset', 'fast',
+    '-an',
+    '-movflags', '+faststart',
+    '-y', outName
+  ]);
+
+  // Leggi output e scarica
+  const data = await ffmpeg.readFile(outName);
+  const blob = new Blob([data.buffer], { type: 'video/mp4' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = file.name.replace(/\.[^.]+$/, '') + '_no_watermark.mp4';
   a.click();
   URL.revokeObjectURL(a.href);
-  URL.revokeObjectURL(srcVideo.src);
-  onProgress(100);
+
+  // Pulizia filesystem virtuale
+  await ffmpeg.deleteFile(inName);
+  await ffmpeg.deleteFile(outName);
 }
 </script>
 </body>

@@ -97,13 +97,13 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 <header class="header">
   <div>
     <div class="logo-title">VEO <span>Remover</span></div>
-    <div class="logo-sub">playback capture · bitrate adattivo · max 100 video</div>
+    <div class="logo-sub">zoom crop · bitrate adattivo · max 100 video</div>
   </div>
   <div class="badge">BROWSER TOOL</div>
 </header>
 
 <div class="tip">
-  <b>Nessun seek —</b> il video viene riprodotto normalmente a velocità massima e ogni frame viene catturato durante il playback. Bitrate uguale all'originale, audio rimosso.
+  <b>Bitrate adattivo —</b> calcolato automaticamente da dimensione e durata del file originale. Zoom centrato rimuove il watermark VEO. Nessun audio nell'output.
 </div>
 
 <label class="drop-zone" id="drop-zone">
@@ -153,219 +153,164 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
   </div>
 </div>
 
-<!-- Canvas nascosto per il rendering -->
 <canvas id="rc" style="display:none"></canvas>
+<video id="src-video" style="display:none" muted playsinline crossorigin="anonymous"></video>
 
 <script>
-const { Muxer, ArrayBufferTarget } = window.Mp4Muxer;
-let files = [], isRunning = false;
+const{Muxer,ArrayBufferTarget}=window.Mp4Muxer;
+let files=[],isRunning=false;
 
-const $ = id => document.getElementById(id);
-const rc = $('rc');
-const rx = rc.getContext('2d', { alpha: false });
-rx.imageSmoothingEnabled = true;
-rx.imageSmoothingQuality = 'high';
+const $=id=>document.getElementById(id);
+const rc=$('rc');
+const rx=rc.getContext('2d',{alpha:false});
+rx.imageSmoothingEnabled=true;
+rx.imageSmoothingQuality='high';
+const srcVideo=$('src-video');
 
-// ── UI helpers ──
-const zoomSlider = $('zoom-slider');
-zoomSlider.oninput = () => $('zoom-val').textContent = zoomSlider.value + '%';
+$('zoom-slider').oninput=()=>$('zoom-val').textContent=$('zoom-slider').value+'%';
+$('drop-zone').ondragover=e=>{e.preventDefault();$('drop-zone').classList.add('drag-over')};
+$('drop-zone').ondragleave=()=>$('drop-zone').classList.remove('drag-over');
+$('drop-zone').ondrop=e=>{e.preventDefault();$('drop-zone').classList.remove('drag-over');addFiles(e.dataTransfer.files)};
+$('file-input').onchange=e=>addFiles(e.target.files);
 
-$('drop-zone').ondragover  = e => { e.preventDefault(); $('drop-zone').classList.add('drag-over'); };
-$('drop-zone').ondragleave = () => $('drop-zone').classList.remove('drag-over');
-$('drop-zone').ondrop      = e => { e.preventDefault(); $('drop-zone').classList.remove('drag-over'); addFiles(e.dataTransfer.files); };
-$('file-input').onchange   = e => addFiles(e.target.files);
+function fmtSize(b){return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB'}
 
-function fmtSize(b) { return b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB'; }
-
-function addFiles(list) {
-  Array.from(list).filter(f => f.type.startsWith('video/')).slice(0, 100 - files.length)
-    .forEach(f => files.push({ file: f, status: 'pending', progress: 0, id: Math.random().toString(36).slice(2) }));
-  render(); updateStats(); $('file-input').value = '';
+function addFiles(list){
+  Array.from(list).filter(f=>f.type.startsWith('video/')).slice(0,100-files.length)
+    .forEach(f=>files.push({file:f,status:'pending',progress:0,id:Math.random().toString(36).slice(2)}));
+  render();updateStats();$('file-input').value='';
 }
+window.removeFile=id=>{if(isRunning)return;files=files.filter(f=>f.id!==id);render();updateStats();};
 
-window.removeFile = id => { if (isRunning) return; files = files.filter(f => f.id !== id); render(); updateStats(); };
+function lbl(f){return{pending:'in attesa',processing:f.progress+'%',done:'✓ ok',error:'✕ err'}[f.status]||''}
 
-function render() {
-  const el = $('file-list');
-  if (!files.length) {
-    el.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--hint);stroke-width:1;fill:none;margin:0 auto 16px;display:block"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nessun video caricato</div>`;
-    $('stats-bar').style.display = 'none'; $('controls').style.display = 'none'; return;
+function render(){
+  const el=$('file-list');
+  if(!files.length){
+    el.innerHTML=`<div class="empty-state"><svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--hint);stroke-width:1;fill:none;margin:0 auto 16px;display:block"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nessun video caricato</div>`;
+    $('stats-bar').style.display='none';$('controls').style.display='none';return;
   }
-  $('stats-bar').style.display = 'grid'; $('controls').style.display = 'grid';
-  el.innerHTML = files.map(f => `
+  $('stats-bar').style.display='grid';$('controls').style.display='grid';
+  el.innerHTML=files.map(f=>`
     <div class="file-item ${f.status}" id="fi-${f.id}">
       <div class="file-dot ${f.status}"></div>
       <span class="file-name" title="${f.file.name}">${f.file.name}</span>
       <span class="file-size">${fmtSize(f.file.size)}</span>
-      ${f.status === 'processing' ? `<div class="mini-bar-wrap"><div class="mini-bar"><div class="mini-fill" id="mf-${f.id}" style="width:${f.progress}%"></div></div></div>` : ''}
-      <span class="file-status ${f.status}">${label(f)}</span>
-      ${f.status === 'pending' && !isRunning ? `<button class="rm-btn" onclick="removeFile('${f.id}')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : '<div style="width:26px;flex-shrink:0"></div>'}
+      ${f.status==='processing'?`<div class="mini-bar-wrap"><div class="mini-bar"><div class="mini-fill" id="mf-${f.id}" style="width:${f.progress}%"></div></div></div>`:''}
+      <span class="file-status ${f.status}">${lbl(f)}</span>
+      ${f.status==='pending'&&!isRunning?`<button class="rm-btn" onclick="removeFile('${f.id}')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:'<div style="width:26px;flex-shrink:0"></div>'}
     </div>`).join('');
 }
 
-function label(f) { return { pending:'in attesa', processing:f.progress+'%', done:'✓ ok', error:'✕ err' }[f.status]||''; }
-
-function updateStats() {
-  $('stat-total').textContent  = files.length;
-  $('stat-done').textContent   = files.filter(f=>f.status==='done').length;
-  $('stat-remain').textContent = files.filter(f=>f.status==='pending').length;
+function updateStats(){
+  $('stat-total').textContent=files.length;
+  $('stat-done').textContent=files.filter(f=>f.status==='done').length;
+  $('stat-remain').textContent=files.filter(f=>f.status==='pending').length;
 }
 
-function setStatus(id, status, pct) {
-  const f = files.find(f=>f.id===id); if (!f) return;
-  f.status = status; if (pct!=null) f.progress = pct;
-  const el = document.getElementById('fi-'+id); if (!el) return;
-  el.className = 'file-item '+status;
-  el.querySelector('.file-dot').className = 'file-dot '+status;
-  const st = el.querySelector('.file-status');
-  st.className = 'file-status '+status; st.textContent = label(f);
-  if (status==='processing' && !document.getElementById('mf-'+id)) {
-    const w = document.createElement('div'); w.className='mini-bar-wrap';
-    w.innerHTML = `<div class="mini-bar"><div class="mini-fill" id="mf-${id}" style="width:0%"></div></div>`;
+function setStatus(id,status,pct){
+  const f=files.find(f=>f.id===id);if(!f)return;
+  f.status=status;if(pct!=null)f.progress=pct;
+  const el=document.getElementById('fi-'+id);if(!el)return;
+  el.className='file-item '+status;
+  el.querySelector('.file-dot').className='file-dot '+status;
+  const st=el.querySelector('.file-status');
+  st.className='file-status '+status;st.textContent=lbl(f);
+  if(status==='processing'&&!document.getElementById('mf-'+id)){
+    const w=document.createElement('div');w.className='mini-bar-wrap';
+    w.innerHTML=`<div class="mini-bar"><div class="mini-fill" id="mf-${id}" style="width:0%"></div></div>`;
     st.before(w);
   }
-  const bar = document.getElementById('mf-'+id);
-  if (bar && pct!=null) bar.style.width = pct+'%';
+  const bar=document.getElementById('mf-'+id);
+  if(bar&&pct!=null)bar.style.width=pct+'%';
   updateStats();
 }
 
-$('clear-btn').onclick = () => { if (isRunning) return; files=[]; render(); updateStats(); $('gp-wrap').style.display='none'; };
+$('clear-btn').onclick=()=>{if(isRunning)return;files=[];render();updateStats();$('gp-wrap').style.display='none';};
 
-$('start-btn').onclick = async () => {
-  if (isRunning) return;
-  const pending = files.filter(f=>f.status==='pending');
-  if (!pending.length) return;
-  isRunning=true; $('start-btn').disabled=true; $('clear-btn').disabled=true;
+$('start-btn').onclick=async()=>{
+  if(isRunning)return;
+  const pending=files.filter(f=>f.status==='pending');
+  if(!pending.length)return;
+  isRunning=true;$('start-btn').disabled=true;$('clear-btn').disabled=true;
   $('gp-wrap').style.display='block';
-  const zoom = parseInt(zoomSlider.value)/100;
+  const zoom=parseInt($('zoom-slider').value)/100;
 
-  for (let i=0; i<pending.length; i++) {
-    const item = pending[i];
-    $('gp-fill').style.width = Math.round(i/pending.length*100)+'%';
-    $('gp-pct').textContent  = Math.round(i/pending.length*100)+'%';
-    $('gp-label').textContent = `${i+1} / ${pending.length} — ${item.file.name}`;
+  for(let i=0;i<pending.length;i++){
+    const item=pending[i];
+    $('gp-fill').style.width=Math.round(i/pending.length*100)+'%';
+    $('gp-pct').textContent=Math.round(i/pending.length*100)+'%';
+    $('gp-label').textContent=`${i+1} / ${pending.length} — ${item.file.name}`;
     setStatus(item.id,'processing',0);
-    try {
-      await processVideo(item.file, zoom, item.id);
+    try{
+      await processVideo(item.file,zoom,item.id);
       setStatus(item.id,'done',100);
-    } catch(e) {
+    }catch(e){
       console.error(e);
       setStatus(item.id,'error');
-      $('gp-log').textContent = '✕ '+e.message;
+      $('gp-log').textContent='✕ '+e.message;
     }
   }
-  $('gp-fill').style.width='100%'; $('gp-pct').textContent='100%';
-  $('gp-label').textContent='Completato'; $('gp-log').textContent='';
-  isRunning=false; $('start-btn').disabled=false; $('clear-btn').disabled=false;
+  $('gp-fill').style.width='100%';$('gp-pct').textContent='100%';
+  $('gp-label').textContent='Completato';$('gp-log').textContent='';
+  isRunning=false;$('start-btn').disabled=false;$('clear-btn').disabled=false;
 };
 
-// ── Core: playback continuo + requestVideoFrameCallback ──
-function processVideo(file, zoom, fileId) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const vid = document.createElement('video');
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.preload = 'auto';
-
-    // Aggiungi al DOM (necessario per alcuni browser)
-    vid.style.cssText = 'position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0';
-    document.body.appendChild(vid);
-
-    vid.onerror = () => { cleanup(); reject(new Error('Impossibile caricare: ' + file.name)); };
-
-    vid.onloadedmetadata = async () => {
-      const W = vid.videoWidth, H = vid.videoHeight, dur = vid.duration;
-      if (!W || !H || !dur || !isFinite(dur)) {
-        cleanup(); reject(new Error('Metadati video non validi')); return;
-      }
-
-      // Bitrate adattivo
-      const bitrate = Math.max(300_000, Math.min(Math.round(file.size*8/dur), 50_000_000));
-      $('gp-log').textContent = `${W}×${H} · ${dur.toFixed(1)}s · ${Math.round(bitrate/1000)} kbps`;
-
-      rc.width=W; rc.height=H;
-      const srcW=W/zoom, srcH=H/zoom, srcX=(W-srcW)/2, srcY=(H-srcH)/2;
-      const fps=30;
-
-      // Muxer + encoder
-      const muxer = new Muxer({ target: new ArrayBufferTarget(), video:{codec:'avc',width:W,height:H}, fastStart:'in-memory' });
-      const enc = new VideoEncoder({
-        output: (chunk,meta) => muxer.addVideoChunk(chunk,meta),
-        error: e => { cleanup(); reject(new Error('Encoder: '+e.message)); }
-      });
-      enc.configure({ codec:'avc1.42001F', width:W, height:H, bitrate, framerate:fps, avc:{format:'avc'} });
-
-      let frameIdx=0, lastTs=-1;
-
-      // requestVideoFrameCallback: chiamato dal browser ad ogni nuovo frame decodificato
-      const useRVFC = typeof vid.requestVideoFrameCallback === 'function';
-
-      function captureFrame(now, meta) {
-        const currentTime = useRVFC ? (meta.mediaTime||vid.currentTime) : vid.currentTime;
-        const pct = Math.min(99, Math.round(currentTime/dur*100));
-        setStatus(fileId,'processing',pct);
-        $('gp-log').textContent = `${currentTime.toFixed(2)}s / ${dur.toFixed(2)}s`;
-
-        // Evita frame duplicati
-        const ts = Math.round(currentTime*1_000_000);
-        if (ts > lastTs) {
-          lastTs = ts;
-          rx.drawImage(vid, srcX, srcY, srcW, srcH, 0, 0, W, H);
-          const vf = new VideoFrame(rc, { timestamp:ts, duration:Math.round(1_000_000/fps) });
-          enc.encode(vf, { keyFrame: frameIdx%60===0 });
-          vf.close();
-          frameIdx++;
-        }
-
-        if (!vid.ended && !vid.paused) {
-          if (useRVFC) vid.requestVideoFrameCallback(captureFrame);
-        }
-      }
-
-      vid.onended = async () => {
-        try {
-          await enc.flush();
-          muxer.finalize();
-          const blob = new Blob([muxer.target.buffer],{type:'video/mp4'});
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = file.name.replace(/\.[^.]+$/,'')+'_no_watermark.mp4';
-          a.click();
-          URL.revokeObjectURL(a.href);
-          cleanup();
-          resolve();
-        } catch(e) { cleanup(); reject(e); }
-      };
-
-      // Fallback con setInterval per browser senza RVFC
-      let intervalId = null;
-      if (!useRVFC) {
-        intervalId = setInterval(() => {
-          if (vid.readyState >= 2) captureFrame();
-          if (vid.ended) clearInterval(intervalId);
-        }, 1000/fps);
-      }
-
-      // Avvia riproduzione
-      if (useRVFC) vid.requestVideoFrameCallback(captureFrame);
-
-      try {
-        await vid.play();
-      } catch(e) {
-        cleanup();
-        reject(new Error('Play fallito: '+e.message));
-      }
-
-      function cleanup() {
-        if (intervalId) clearInterval(intervalId);
-        URL.revokeObjectURL(url);
-        if (vid.parentNode) vid.parentNode.removeChild(vid);
-      }
-    };
-
-    vid.src = url;
+async function processVideo(file,zoom,fileId){
+  // Carica il video
+  srcVideo.src=URL.createObjectURL(file);
+  await new Promise((res,rej)=>{
+    srcVideo.onloadedmetadata=res;
+    srcVideo.onerror=()=>rej(new Error('Errore caricamento: '+file.name));
   });
+
+  const W=srcVideo.videoWidth,H=srcVideo.videoHeight,dur=srcVideo.duration;
+
+  // Bitrate adattivo: dimensione file / durata, meno stima audio 128kbps
+  const rawBr=Math.round(file.size*8/dur);
+  const bitrate=Math.max(200_000,Math.min(rawBr-128_000,50_000_000));
+
+  $('gp-log').textContent=`${W}×${H} · ${dur.toFixed(1)}s · ${Math.round(bitrate/1000)} kbps`;
+
+  rc.width=W;rc.height=H;
+  // Crop: sorgente centrale ridotta, dest full canvas
+  const srcW=W/zoom,srcH=H/zoom,srcX=(W-srcW)/2,srcY=(H-srcH)/2;
+  const fps=30,totalFrames=Math.ceil(dur*fps);
+
+  const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'});
+  const enc=new VideoEncoder({
+    output:(chunk,meta)=>muxer.addVideoChunk(chunk,meta),
+    error:e=>{throw new Error('Encoder: '+e.message)}
+  });
+  enc.configure({codec:'avc1.42001F',width:W,height:H,bitrate,framerate:fps,avc:{format:'avc'}});
+
+  for(let i=0;i<totalFrames;i++){
+    const t=Math.min(i/fps,dur-0.001);
+    srcVideo.currentTime=t;
+    await new Promise(res=>{srcVideo.onseeked=res;});
+
+    rx.drawImage(srcVideo,srcX,srcY,srcW,srcH,0,0,W,H);
+    const vf=new VideoFrame(rc,{timestamp:Math.round(t*1_000_000),duration:Math.round(1_000_000/fps)});
+    enc.encode(vf,{keyFrame:i%(fps*2)===0});
+    vf.close();
+
+    if(i%5===0){
+      setStatus(fileId,'processing',Math.round(i/totalFrames*100));
+      $('gp-log').textContent=`Frame ${i+1}/${totalFrames} · ${Math.round(bitrate/1000)} kbps`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+  }
+
+  await enc.flush();
+  muxer.finalize();
+  URL.revokeObjectURL(srcVideo.src);
+
+  const blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=file.name.replace(/\.[^.]+$/,'')+'_no_watermark.mp4';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 </body>

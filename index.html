@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VEO Remover Pro</title>
+<title>VEO Remover Pro - Zero Black Frames</title>
 <script src="https://unpkg.com/mp4-muxer@latest/build/mp4-muxer.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -97,13 +97,13 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 <header class="header">
   <div>
     <div class="logo-title">VEO <span>Remover</span></div>
-    <div class="logo-sub">zoom crop · smart hd · max 10MB</div>
+    <div class="logo-sub">no black frames · smart hd · max 10MB</div>
   </div>
   <div class="badge">PRO VERSION</div>
 </header>
 
 <div class="tip">
-  <b>Supporto File Pesanti —</b> I video in altissima risoluzione vengono ora automaticamente ridimensionati per prevenire crash e mantenere un caricamento ottimizzato.
+  <b>Clean Start —</b> Ho risolto il problema dei frame neri iniziali forzando il browser ad attendere il rendering effettivo del primo fotogramma.
 </div>
 
 <label class="drop-zone" id="drop-zone">
@@ -177,6 +177,7 @@ function addFiles(list){
     .forEach(f=>files.push({file:f,status:'pending',progress:0,id:Math.random().toString(36).slice(2)}));
   render();updateStats();$('file-input').value='';
 }
+
 window.removeFile=id=>{if(isRunning)return;files=files.filter(f=>f.id!==id);render();updateStats();};
 
 function lbl(f){return{pending:'attesa',processing:f.progress+'%',done:'✓ ok',error:'✕ err'}[f.status]||''}
@@ -253,6 +254,23 @@ $('start-btn').onclick=async()=>{
   isRunning=false;$('start-btn').disabled=false;$('clear-btn').disabled=false;
 };
 
+// Funzione per aspettare che il frame sia veramente pronto
+async function waitForFrame(video, time) {
+  return new Promise((resolve) => {
+    const onSeeked = () => {
+      video.removeEventListener('seeked', onSeeked);
+      // Piccolo delay extra per permettere al browser di dipingere i pixel
+      if ('requestVideoFrameCallback' in video) {
+        video.requestVideoFrameCallback(() => resolve());
+      } else {
+        setTimeout(resolve, 60);
+      }
+    };
+    video.addEventListener('seeked', onSeeked);
+    video.currentTime = time;
+  });
+}
+
 async function processVideo(file, zoom, fileId) {
   srcVideo.pause();
   srcVideo.removeAttribute('src');
@@ -262,51 +280,32 @@ async function processVideo(file, zoom, fileId) {
   srcVideo.src = objectUrl;
 
   await new Promise((res, rej) => {
-    if (srcVideo.readyState >= 1) {
-      setTimeout(res, 200);
-      return;
-    }
-    srcVideo.onloadedmetadata = () => setTimeout(res, 200);
-    srcVideo.onerror = () => rej(new Error('Errore caricamento file locale'));
+    srcVideo.onloadedmetadata = () => setTimeout(res, 300);
+    srcVideo.onerror = () => rej(new Error('Errore caricamento file'));
   });
 
-  const origW = srcVideo.videoWidth;
-  const origH = srcVideo.videoHeight;
-  const dur = srcVideo.duration;
+  const origW = srcVideo.videoWidth, origH = srcVideo.videoHeight, dur = srcVideo.duration;
 
-  // --- SMART DOWNSCALING: Previene crash con video superiori a 1080p ---
+  // Smart Downscaling
   const MAX_DIM = 1920; 
-  let outW = origW;
-  let outH = origH;
-
+  let outW = origW, outH = origH;
   if (origW > MAX_DIM || origH > MAX_DIM) {
     const ratio = Math.min(MAX_DIM / origW, MAX_DIM / origH);
     outW = Math.round(origW * ratio);
     outH = Math.round(origH * ratio);
   }
-
-  // REGOLE WEBCODECS: Le dimensioni DEVONO essere sempre pari
   outW = outW % 2 === 0 ? outW : outW - 1;
   outH = outH % 2 === 0 ? outH : outH - 1;
 
-  // --- LOGICA BITRATE ---
   const MAX_SIZE_BYTES = 9.4 * 1024 * 1024;
   let targetBitrate = Math.floor((MAX_SIZE_BYTES * 8) / dur);
   targetBitrate = Math.max(400_000, Math.min(targetBitrate, 8_000_000));
 
   $('gp-log').textContent = `Out: ${outW}x${outH} | Bitrate: ${Math.round(targetBitrate/1000)}kbps`;
 
-  rc.width = outW; 
-  rc.height = outH;
-  
-  // Calcolo porzione da prelevare (Zoom Cropping sul video originale)
-  const srcW = origW / zoom;
-  const srcH = origH / zoom;
-  const srcX = (origW - srcW) / 2;
-  const srcY = (origH - srcH) / 2;
-  
-  const fps = 30;
-  const totalFrames = Math.ceil(dur * fps);
+  rc.width = outW; rc.height = outH;
+  const srcW = origW / zoom, srcH = origH / zoom, srcX = (origW - srcW) / 2, srcY = (origH - srcH) / 2;
+  const fps = 30, totalFrames = Math.ceil(dur * fps);
 
   const muxer = new Muxer({ 
     target: new ArrayBufferTarget(), 
@@ -319,34 +318,24 @@ async function processVideo(file, zoom, fileId) {
     error: e => { throw new Error('Codec Error: ' + e.message); }
   });
 
-  // Profilo Codec Avanzato (Main Profile L4.2): Supporta video pesanti in altissima definizione
   const config = {
     codec: 'avc1.4D002A', 
-    width: outW,
-    height: outH,
-    bitrate: targetBitrate,
-    framerate: fps,
+    width: outW, height: outH,
+    bitrate: targetBitrate, framerate: fps,
     avc: { format: 'avc' }
   };
   
   const support = await VideoEncoder.isConfigSupported(config);
-  if (!support.supported) throw new Error("Codec non supportato per questa risoluzione.");
+  if (!support.supported) throw new Error("Configurazione non supportata");
   
   enc.configure(config);
 
   for (let i = 0; i < totalFrames; i++) {
-    const t = Math.min(i / fps, dur - 0.05);
+    // TRUCCO: Partiamo da 0.01s invece di 0.0s per evitare il buffer vuoto iniziale
+    const t = Math.max(0.01, Math.min(i / fps, dur - 0.05));
     
-    await new Promise(res => {
-      if (Math.abs(srcVideo.currentTime - t) < 0.01) {
-        res();
-      } else {
-        srcVideo.onseeked = res;
-        srcVideo.currentTime = t;
-      }
-    });
+    await waitForFrame(srcVideo, t);
 
-    // Disegniamo sul canvas applicando la nuova risoluzione calcolata
     rx.drawImage(srcVideo, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
     
     const vf = new VideoFrame(rc, { 
@@ -357,13 +346,10 @@ async function processVideo(file, zoom, fileId) {
     enc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
     vf.close();
 
-    if (enc.encodeQueueSize > 20) {
+    if (enc.encodeQueueSize > 15) {
       await new Promise(res => {
-        const checkQueue = () => {
-          if (enc.encodeQueueSize < 10) res();
-          else requestAnimationFrame(checkQueue);
-        };
-        checkQueue();
+        const check = () => (enc.encodeQueueSize < 5 ? res() : requestAnimationFrame(check));
+        check();
       });
     }
 
@@ -376,12 +362,8 @@ async function processVideo(file, zoom, fileId) {
   await enc.flush();
   muxer.finalize();
   
-  srcVideo.removeAttribute('src');
-  srcVideo.load();
-
   const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
   const downloadUrl = URL.createObjectURL(blob);
-  
   const a = document.createElement('a');
   a.href = downloadUrl;
   a.download = file.name.replace(/\.[^.]+$/, '') + '_tiktok.mp4';
@@ -390,7 +372,7 @@ async function processVideo(file, zoom, fileId) {
   setTimeout(() => {
     URL.revokeObjectURL(objectUrl);
     URL.revokeObjectURL(downloadUrl);
-  }, 5000);
+  }, 8000);
 }
 </script>
 </body>

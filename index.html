@@ -97,13 +97,13 @@ input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 <header class="header">
   <div>
     <div class="logo-title">VEO <span>Remover</span></div>
-    <div class="logo-sub">zoom crop · smart compression · max 10MB</div>
+    <div class="logo-sub">zoom crop · smart hd · max 10MB</div>
   </div>
   <div class="badge">PRO VERSION</div>
 </header>
 
 <div class="tip">
-  <b>Elaborazione Sicura —</b> Gestione dinamica della RAM, auto-backpressure e bitrate calcolato matematicamente per mantenere il file sotto i <b>10MB</b>.
+  <b>Supporto File Pesanti —</b> I video in altissima risoluzione vengono ora automaticamente ridimensionati per prevenire crash e mantenere un caricamento ottimizzato.
 </div>
 
 <label class="drop-zone" id="drop-zone">
@@ -254,7 +254,6 @@ $('start-btn').onclick=async()=>{
 };
 
 async function processVideo(file, zoom, fileId) {
-  // Pulizia profonda e sicura del tag video
   srcVideo.pause();
   srcVideo.removeAttribute('src');
   srcVideo.load();
@@ -263,7 +262,6 @@ async function processVideo(file, zoom, fileId) {
   srcVideo.src = objectUrl;
 
   await new Promise((res, rej) => {
-    // Se il video è già pronto in memoria cache, sblocca subito
     if (srcVideo.readyState >= 1) {
       setTimeout(res, 200);
       return;
@@ -272,22 +270,47 @@ async function processVideo(file, zoom, fileId) {
     srcVideo.onerror = () => rej(new Error('Errore caricamento file locale'));
   });
 
-  const W = srcVideo.videoWidth, H = srcVideo.videoHeight, dur = srcVideo.duration;
+  const origW = srcVideo.videoWidth;
+  const origH = srcVideo.videoHeight;
+  const dur = srcVideo.duration;
 
-  // --- LOGICA TARGET 10MB ---
-  const MAX_SIZE_BYTES = 9.4 * 1024 * 1024; // Prudenziale 9.4MB
+  // --- SMART DOWNSCALING: Previene crash con video superiori a 1080p ---
+  const MAX_DIM = 1920; 
+  let outW = origW;
+  let outH = origH;
+
+  if (origW > MAX_DIM || origH > MAX_DIM) {
+    const ratio = Math.min(MAX_DIM / origW, MAX_DIM / origH);
+    outW = Math.round(origW * ratio);
+    outH = Math.round(origH * ratio);
+  }
+
+  // REGOLE WEBCODECS: Le dimensioni DEVONO essere sempre pari
+  outW = outW % 2 === 0 ? outW : outW - 1;
+  outH = outH % 2 === 0 ? outH : outH - 1;
+
+  // --- LOGICA BITRATE ---
+  const MAX_SIZE_BYTES = 9.4 * 1024 * 1024;
   let targetBitrate = Math.floor((MAX_SIZE_BYTES * 8) / dur);
   targetBitrate = Math.max(400_000, Math.min(targetBitrate, 8_000_000));
 
-  $('gp-log').textContent = `Ris: ${W}x${H} | Bitrate Calc: ${Math.round(targetBitrate/1000)}kbps`;
+  $('gp-log').textContent = `Out: ${outW}x${outH} | Bitrate: ${Math.round(targetBitrate/1000)}kbps`;
 
-  rc.width = W; rc.height = H;
-  const srcW = W / zoom, srcH = H / zoom, srcX = (W - srcW) / 2, srcY = (H - srcH) / 2;
-  const fps = 30, totalFrames = Math.ceil(dur * fps);
+  rc.width = outW; 
+  rc.height = outH;
+  
+  // Calcolo porzione da prelevare (Zoom Cropping sul video originale)
+  const srcW = origW / zoom;
+  const srcH = origH / zoom;
+  const srcX = (origW - srcW) / 2;
+  const srcY = (origH - srcH) / 2;
+  
+  const fps = 30;
+  const totalFrames = Math.ceil(dur * fps);
 
   const muxer = new Muxer({ 
     target: new ArrayBufferTarget(), 
-    video: { codec: 'avc', width: W, height: H }, 
+    video: { codec: 'avc', width: outW, height: outH }, 
     fastStart: 'in-memory' 
   });
   
@@ -296,26 +319,25 @@ async function processVideo(file, zoom, fileId) {
     error: e => { throw new Error('Codec Error: ' + e.message); }
   });
 
+  // Profilo Codec Avanzato (Main Profile L4.2): Supporta video pesanti in altissima definizione
   const config = {
-    codec: 'avc1.42001F',
-    width: W,
-    height: H,
+    codec: 'avc1.4D002A', 
+    width: outW,
+    height: outH,
     bitrate: targetBitrate,
     framerate: fps,
     avc: { format: 'avc' }
   };
   
   const support = await VideoEncoder.isConfigSupported(config);
-  if (!support.supported) throw new Error("Configurazione Codec non supportata dal tuo browser");
+  if (!support.supported) throw new Error("Codec non supportato per questa risoluzione.");
   
   enc.configure(config);
 
   for (let i = 0; i < totalFrames; i++) {
     const t = Math.min(i / fps, dur - 0.05);
     
-    // SAFEGUARD 1: Protezione da loop infinito sul seek
     await new Promise(res => {
-      // Se siamo già al tempo richiesto (o quasi), non fare seek
       if (Math.abs(srcVideo.currentTime - t) < 0.01) {
         res();
       } else {
@@ -324,7 +346,8 @@ async function processVideo(file, zoom, fileId) {
       }
     });
 
-    rx.drawImage(srcVideo, srcX, srcY, srcW, srcH, 0, 0, W, H);
+    // Disegniamo sul canvas applicando la nuova risoluzione calcolata
+    rx.drawImage(srcVideo, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
     
     const vf = new VideoFrame(rc, { 
       timestamp: Math.round(t * 1_000_000), 
@@ -334,8 +357,6 @@ async function processVideo(file, zoom, fileId) {
     enc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
     vf.close();
 
-    // SAFEGUARD 2: Protezione RAM (Backpressure)
-    // Se ci sono troppi frame in elaborazione, aspetta per svuotare la memoria
     if (enc.encodeQueueSize > 20) {
       await new Promise(res => {
         const checkQueue = () => {
@@ -346,7 +367,6 @@ async function processVideo(file, zoom, fileId) {
       });
     }
 
-    // Aggiornamento interfaccia
     if (i % 10 === 0) {
       setStatus(fileId, 'processing', Math.round(i / totalFrames * 100));
       await new Promise(r => setTimeout(r, 0));
@@ -356,7 +376,6 @@ async function processVideo(file, zoom, fileId) {
   await enc.flush();
   muxer.finalize();
   
-  // Cleanup della memoria
   srcVideo.removeAttribute('src');
   srcVideo.load();
 
@@ -368,8 +387,6 @@ async function processVideo(file, zoom, fileId) {
   a.download = file.name.replace(/\.[^.]+$/, '') + '_tiktok.mp4';
   a.click();
   
-  // SAFEGUARD 3: Download protetto. Attendiamo 5 secondi prima di distruggere l'URL locale 
-  // per assicurarci che il browser abbia effettivamente avviato il download.
   setTimeout(() => {
     URL.revokeObjectURL(objectUrl);
     URL.revokeObjectURL(downloadUrl);
